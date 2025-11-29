@@ -1,0 +1,559 @@
+import React, { useState, useCallback } from 'react';
+import { 
+  Building2, 
+  MapPin, 
+  User, 
+  Ruler, 
+  Image as ImageIcon, 
+  Send, 
+  Save, 
+  FileText,
+  Search,
+  Loader2,
+  Compass
+} from 'lucide-react';
+import { INITIAL_DATA, PHOTO_LABELS, PANORAMIC_LABELS, ReportData, PhotoSlot } from './types';
+import { Input, Select } from './components/Input';
+import { Section } from './components/Section';
+import { PhotoUpload } from './components/PhotoUpload';
+
+// Helper function to convert Decimal to Degrees Minutes Seconds
+const decimalToDms = (val: string): string => {
+  const decimal = parseFloat(val.replace(',', '.'));
+  if (isNaN(decimal)) return '';
+
+  const sign = decimal < 0 ? '-' : '';
+  const abs = Math.abs(decimal);
+  const degrees = Math.floor(abs);
+  const minutesFloat = (abs - degrees) * 60;
+  const minutes = Math.floor(minutesFloat);
+  const seconds = ((minutesFloat - minutes) * 60).toFixed(2);
+
+  return `${sign}${degrees}° ${minutes}' ${seconds}"`;
+};
+
+export default function App() {
+  const [data, setData] = useState<ReportData>(INITIAL_DATA);
+  
+  // Standard Photos (0-33)
+  const [photos, setPhotos] = useState<PhotoSlot[]>(
+    PHOTO_LABELS.map((label, index) => ({
+      id: index,
+      label,
+      file: null,
+      previewUrl: null
+    }))
+  );
+
+  // Panoramic Photos (100-111)
+  const [panoramas, setPanoramas] = useState<PhotoSlot[]>(
+    PANORAMIC_LABELS.map((label, index) => ({
+      id: 100 + index,
+      label,
+      file: null,
+      previewUrl: null
+    }))
+  );
+
+  const [croqui, setCroqui] = useState<PhotoSlot>({
+    id: 999,
+    label: "CROQUI DE SITUAÇÃO",
+    file: null,
+    previewUrl: null
+  });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingCep, setIsLoadingCep] = useState(false);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    
+    setData(prev => {
+      const newData = { ...prev, [name]: value };
+
+      // Auto-convert coordinates if reading fields change
+      if (name === 'latRead') {
+        newData.latConv = decimalToDms(value);
+      }
+      if (name === 'longRead') {
+        newData.longConv = decimalToDms(value);
+      }
+
+      return newData;
+    });
+  };
+
+  const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
+    const cep = e.target.value.replace(/\D/g, '');
+    
+    if (cep.length === 8) {
+      setIsLoadingCep(true);
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const addressData = await response.json();
+        
+        if (!addressData.erro) {
+          setData(prev => ({
+            ...prev,
+            address: addressData.logradouro || prev.address,
+            neighborhood: addressData.bairro || prev.neighborhood,
+            city: addressData.localidade || prev.city,
+            state: addressData.uf || prev.state,
+          }));
+        }
+      } catch (error) {
+        console.error("Erro ao buscar CEP", error);
+      } finally {
+        setIsLoadingCep(false);
+      }
+    }
+  };
+
+  const handlePhotoUpload = useCallback((id: number, file: File) => {
+    const url = URL.createObjectURL(file);
+    
+    if (id === 999) {
+      setCroqui(prev => {
+        if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+        return { ...prev, file, previewUrl: url };
+      });
+      return;
+    }
+
+    if (id >= 100 && id < 200) {
+      setPanoramas(prev => prev.map(p => {
+        if (p.id === id) {
+          if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+          return { ...p, file, previewUrl: url };
+        }
+        return p;
+      }));
+      return;
+    }
+
+    setPhotos(prev => prev.map(p => {
+      if (p.id === id) {
+        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+        return { ...p, file, previewUrl: url };
+      }
+      return p;
+    }));
+  }, []);
+
+  const handlePhotoRemove = useCallback((id: number) => {
+    if (id === 999) {
+      setCroqui(prev => {
+        if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+        return { ...prev, file: null, previewUrl: null };
+      });
+      return;
+    }
+
+    if (id >= 100 && id < 200) {
+       setPanoramas(prev => prev.map(p => {
+        if (p.id === id) {
+          if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+          return { ...p, file: null, previewUrl: null };
+        }
+        return p;
+      }));
+      return;
+    }
+
+    setPhotos(prev => prev.map(p => {
+      if (p.id === id) {
+        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+        return { ...p, file: null, previewUrl: null };
+      }
+      return p;
+    }));
+  }, []);
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    console.log("Relatório Submitido:", {
+      data,
+      croqui: croqui.file ? croqui.file.name : 'Sem croqui',
+      panoramasCount: panoramas.filter(p => p.file !== null).length,
+      photosCount: photos.filter(p => p.file !== null).length
+    });
+
+    alert("Relatório SAR enviado com sucesso!");
+    setIsSubmitting(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-100 pb-20">
+      {/* Header */}
+      <header className="bg-primary-700 text-white shadow-lg sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-white/10 p-2 rounded-lg">
+              <FileText size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">SAR</h1>
+              <p className="text-xs text-primary-100 font-medium opacity-90">Site Acquisition Report</p>
+            </div>
+          </div>
+          <button className="hidden md:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-md transition-colors text-sm font-medium">
+            <Save size={16} />
+            Salvar Rascunho
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        
+        {/* Step 1: Dados do Empreendimento */}
+        <Section title="Dados do Empreendimento" icon={<Building2 size={20} />}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <Select 
+              label="Tipo do Site" 
+              name="siteType" 
+              value={data.siteType}
+              onChange={handleInputChange}
+              options={[
+                { value: 'GREENFIELD', label: 'GREENFIELD' },
+                { value: 'ROOFTOP', label: 'ROOFTOP' },
+                { value: 'INDOOR', label: 'INDOOR' }
+              ]}
+            />
+             <Select 
+              label="Status Negociação" 
+              name="status"
+              value={data.status}
+              onChange={handleInputChange}
+              options={[
+                { value: 'EM NEGOCIAÇÃO', label: 'EM NEGOCIAÇÃO' },
+                { value: 'CONTRATADO', label: 'CONTRATADO' },
+                { value: 'CANCELADO', label: 'CANCELADO' }
+              ]}
+            />
+            <Select 
+              label="Tipo de E.V" 
+              name="structureType"
+              value={data.structureType}
+              onChange={handleInputChange}
+              options={[
+                { value: 'TORRE', label: 'TORRE' },
+                { value: 'POSTE', label: 'POSTE' },
+                { value: 'MASTRO', label: 'MASTRO' }
+              ]}
+            />
+            <Input 
+              label="Altura Prevista EV (m)" 
+              name="heightEv" 
+              type="number" 
+              value={data.heightEv}
+              onChange={handleInputChange}
+            />
+            <Input 
+              label="Altura Pré-Comar (m)" 
+              name="heightPreComar" 
+              type="number" 
+              value={data.heightPreComar}
+              onChange={handleInputChange}
+            />
+            <Input 
+              label="Valor Pleiteado (R$)" 
+              name="pleadedValue" 
+              placeholder="0,00" 
+              value={data.pleadedValue}
+              onChange={handleInputChange}
+            />
+          </div>
+        </Section>
+
+        {/* Step 2: Localização */}
+        <Section title="Localização & Coordenadas" icon={<MapPin size={20} />}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="relative">
+              <Input 
+                label="CEP" 
+                name="zipCode" 
+                placeholder="00000-000" 
+                value={data.zipCode} 
+                onChange={handleInputChange} 
+                onBlur={handleCepBlur}
+              />
+              {isLoadingCep && (
+                <div className="absolute right-3 top-8 text-primary-600 animate-spin">
+                  <Loader2 size={16} />
+                </div>
+              )}
+            </div>
+            
+            <Input className="md:col-span-2" label="Endereço" name="address" value={data.address} onChange={handleInputChange} />
+            <Input label="Bairro" name="neighborhood" value={data.neighborhood} onChange={handleInputChange} />
+            <Input label="Cidade" name="city" value={data.city} onChange={handleInputChange} />
+            <Input label="Estado" name="state" value={data.state} onChange={handleInputChange} />
+            <Select 
+              label="Dentro do Search Ring?" 
+              name="insideSearchRing"
+              value={data.insideSearchRing}
+              onChange={handleInputChange}
+              options={[
+                { value: 'SIM', label: 'SIM' },
+                { value: 'NÃO', label: 'NÃO' }
+              ]}
+            />
+            <Input label="Distância PN" name="distancePn" value={data.distancePn} onChange={handleInputChange} />
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+            <h3 className="text-sm font-bold text-slate-700 mb-4 uppercase flex items-center gap-2">
+              Coordenadas
+              <span className="text-xs font-normal normal-case text-slate-500">(Preencha a leitura para conversão automática)</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Leitura (Decimal) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <span className="text-xs font-bold text-primary-700 uppercase">Leitura (Decimal)</span>
+                </div>
+                <Input 
+                  label="Latitude" 
+                  name="latRead" 
+                  placeholder="-00.000000" 
+                  value={data.latRead} 
+                  onChange={handleInputChange} 
+                />
+                <Input 
+                  label="Longitude" 
+                  name="longRead" 
+                  placeholder="-00.000000" 
+                  value={data.longRead} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+
+              {/* Conversor (GMS) */}
+              <div className="grid grid-cols-2 gap-4 bg-white p-3 rounded border border-slate-200">
+                 <div className="col-span-2">
+                  <span className="text-xs font-bold text-primary-700 uppercase">Conversor (Graus, Min, Seg)</span>
+                </div>
+                <Input 
+                  label="Latitude GMS" 
+                  name="latConv" 
+                  placeholder="-00° 00' 00''" 
+                  value={data.latConv} 
+                  onChange={handleInputChange}
+                  readOnly
+                  className="bg-slate-50 text-slate-600"
+                />
+                <Input 
+                  label="Longitude GMS" 
+                  name="longConv" 
+                  placeholder="-00° 00' 00''" 
+                  value={data.longConv} 
+                  onChange={handleInputChange}
+                  readOnly
+                  className="bg-slate-50 text-slate-600"
+                />
+              </div>
+            </div>
+            
+            <div className="mt-4">
+               <Input label="Altitude (m)" name="altitude" value={data.altitude} onChange={handleInputChange} className="md:w-1/3" />
+            </div>
+          </div>
+        </Section>
+
+        {/* Step 3: Proprietário */}
+        <Section title="Dados do Proprietário" icon={<User size={20} />}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Input className="md:col-span-2" label="Nome Proprietário" name="ownerName" value={data.ownerName} onChange={handleInputChange} />
+            <Select 
+              label="Tipo Pessoa" 
+              name="ownerType"
+              value={data.ownerType}
+              onChange={handleInputChange}
+              options={[
+                { value: 'FISICA', label: 'FÍSICA' },
+                { value: 'JURIDICA', label: 'JURÍDICA' }
+              ]}
+            />
+            <Input label="Email" name="ownerEmail" type="email" value={data.ownerEmail} onChange={handleInputChange} />
+            <Input label="Telefone" name="ownerPhone" value={data.ownerPhone} onChange={handleInputChange} />
+            <Input className="md:col-span-3" label="Endereço Completo" name="ownerAddress" value={data.ownerAddress} onChange={handleInputChange} />
+          </div>
+          
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <h3 className="text-xs font-bold text-slate-500 mb-4 uppercase tracking-wider">Representante / Administrador</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               <Input label="Nome" name="adminName" value={data.adminName} onChange={handleInputChange} />
+               <Input label="Telefone" name="adminPhone" value={data.adminPhone} onChange={handleInputChange} />
+               <Input label="Email" name="adminEmail" value={data.adminEmail} onChange={handleInputChange} />
+            </div>
+          </div>
+        </Section>
+
+        {/* Step 4: Dados da Propriedade */}
+        <Section title="Informações sobre a Propriedade" icon={<Ruler size={20} />}>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <Select 
+              label="Tipo Propriedade" 
+              name="propertyType"
+              value={data.propertyType}
+              onChange={handleInputChange}
+              options={[
+                { value: 'Terreno Urbano', label: 'Terreno Urbano' },
+                { value: 'Terreno Rural', label: 'Terreno Rural' },
+                { value: 'Edificação', label: 'Edificação Comercial' }
+              ]}
+            />
+            <Select 
+              label="Edificação Existente?" 
+              name="hasBuilding"
+              value={data.hasBuilding}
+              onChange={handleInputChange}
+              options={[
+                { value: 'SIM', label: 'SIM' },
+                { value: 'NÃO', label: 'NÃO' }
+              ]}
+            />
+            <Select 
+              label="Estado Conservação" 
+              name="conservationStatus"
+              value={data.conservationStatus}
+              onChange={handleInputChange}
+              options={[
+                { value: 'BOM', label: 'BOM' },
+                { value: 'REGULAR', label: 'REGULAR' },
+                { value: 'RUIM', label: 'RUIM' }
+              ]}
+            />
+             <Select 
+              label="Zoneamento" 
+              name="zoning"
+              value={data.zoning}
+              onChange={handleInputChange}
+              options={[
+                { value: 'Residencial', label: 'Residencial' },
+                { value: 'Comercial', label: 'Comercial' },
+                { value: 'Industrial', label: 'Industrial' },
+                { value: 'Misto', label: 'Misto' }
+              ]}
+            />
+            
+            <Input label="Largura Disp. (m)" name="dimensionsW" placeholder="10.00" value={data.dimensionsW} onChange={handleInputChange} />
+            <Input label="Profundidade Disp. (m)" name="dimensionsD" placeholder="15.00" value={data.dimensionsD} onChange={handleInputChange} />
+            <Input label="Área Total (m²)" name="totalArea" placeholder="150.00" value={data.totalArea} onChange={handleInputChange} />
+            
+             <Select 
+              label="Outras Op. Raio 500m?" 
+              name="otherOperatorsNearby"
+              value={data.otherOperatorsNearby}
+              onChange={handleInputChange}
+              options={[
+                { value: 'SIM', label: 'SIM' },
+                { value: 'NÃO', label: 'NÃO' }
+              ]}
+            />
+            {data.otherOperatorsNearby === 'SIM' && (
+              <>
+                <Input label="Quais Operadoras?" name="operatorNames" placeholder="Ex: Vivo, Tim" value={data.operatorNames} onChange={handleInputChange} />
+                <Input label="Distância (m)" name="operatorDistance" placeholder="50.00" value={data.operatorDistance} onChange={handleInputChange} />
+              </>
+            )}
+          </div>
+        </Section>
+
+        {/* Step 5: Croqui */}
+        <Section title="Croqui de Situação" icon={<MapPin size={20} />}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <div className="text-sm text-slate-600 space-y-2">
+              <p><strong>O Croqui deve mencionar:</strong></p>
+              <ul className="list-disc pl-5 space-y-1 text-xs">
+                <li>Distância de outras ERBs</li>
+                <li>Nome de Ruas e Rodovias</li>
+                <li>Distância de áreas críticas</li>
+                <li>Distância da Rede Elétrica</li>
+                <li>Acesso à área locada</li>
+                <li>Norte Verdadeiro</li>
+              </ul>
+            </div>
+            <div className="h-64">
+              <PhotoUpload 
+                slot={croqui} 
+                onUpload={handlePhotoUpload} 
+                onRemove={handlePhotoRemove} 
+              />
+            </div>
+          </div>
+        </Section>
+
+        {/* Step 6: Relatório Fotográfico */}
+        <Section title="Relatório Fotográfico" icon={<ImageIcon size={20} />}>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {photos.map((slot) => (
+              <div key={slot.id} className="h-48 md:h-56">
+                <PhotoUpload 
+                  slot={slot} 
+                  onUpload={handlePhotoUpload} 
+                  onRemove={handlePhotoRemove} 
+                />
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* Step 7: Panorâmicas */}
+        <Section title="Fotos Panorâmicas" icon={<Compass size={20} />}>
+          <div className="mb-4 text-center">
+             <p className="text-red-600 font-bold text-sm italic">
+               Tirar fotos de pontos altos de forma a mostrar os objetivos de cobertura
+             </p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {panoramas.map((slot) => (
+              <div key={slot.id} className="h-48 md:h-56">
+                <PhotoUpload 
+                  slot={slot} 
+                  onUpload={handlePhotoUpload} 
+                  onRemove={handlePhotoRemove} 
+                />
+              </div>
+            ))}
+          </div>
+        </Section>
+
+      </main>
+
+      {/* Floating Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <div className="max-w-7xl mx-auto flex justify-end gap-4">
+          <button 
+            type="button" 
+            className="px-6 py-3 text-slate-700 font-semibold text-sm hover:bg-slate-100 rounded-md transition-colors"
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className={`
+              flex items-center gap-2 px-8 py-3 bg-primary-600 text-white rounded-md font-bold text-sm shadow-lg
+              hover:bg-primary-700 active:bg-primary-800 transition-all
+              ${isSubmitting ? 'opacity-70 cursor-wait' : ''}
+            `}
+          >
+            {isSubmitting ? (
+              'Enviando...'
+            ) : (
+              <>
+                <Send size={18} />
+                ENVIAR RELATÓRIO
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
