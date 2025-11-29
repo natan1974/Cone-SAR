@@ -34,6 +34,7 @@ const decimalToDms = (val: string): string => {
 
 export default function App() {
   const [data, setData] = useState<ReportData>(INITIAL_DATA);
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Standard Photos (0-33)
   const [photos, setPhotos] = useState<PhotoSlot[]>(
@@ -176,6 +177,7 @@ export default function App() {
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     console.log("Relatório Submitido:", {
+      date: reportDate,
       data,
       croqui: croqui.file ? croqui.file.name : 'Sem croqui',
       panoramasCount: panoramas.filter(p => p.file !== null).length,
@@ -200,10 +202,23 @@ export default function App() {
               <p className="text-xs text-primary-100 font-medium opacity-90">Site Acquisition Report</p>
             </div>
           </div>
-          <button className="hidden md:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-md transition-colors text-sm font-medium">
-            <Save size={16} />
-            Salvar Rascunho
-          </button>
+          
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-primary-200 font-semibold uppercase tracking-wider mb-0.5">Data do Relatório</span>
+              <input 
+                type="date"
+                value={reportDate}
+                onChange={(e) => setReportDate(e.target.value)}
+                className="bg-primary-800/50 border border-primary-600 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/20 shadow-sm [color-scheme:dark]"
+              />
+            </div>
+
+            <button className="hidden md:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-md transition-colors text-sm font-medium h-[42px]">
+              <Save size={16} />
+              <span className="hidden lg:inline">Salvar Rascunho</span>
+            </button>
+          </div>
         </div>
       </header>
 
