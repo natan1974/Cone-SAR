@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { 
   Building2, 
@@ -12,7 +13,8 @@ import {
   Loader2,
   Compass,
   CheckCircle2,
-  Database
+  Database,
+  LocateFixed
 } from 'lucide-react';
 import { INITIAL_DATA, PHOTO_LABELS, PANORAMIC_LABELS, ReportData, PhotoSlot, SavedReport, StoredImage } from './types';
 import { Input, Select } from './components/Input';
@@ -112,6 +114,7 @@ export default function App() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingCep, setIsLoadingCep] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -197,6 +200,48 @@ export default function App() {
         }
       }
     }
+  };
+
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      setNotification({ type: 'error', message: 'Geolocalização não suportada neste navegador.' });
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude.toFixed(6);
+        const long = position.coords.longitude.toFixed(6);
+        const alt = position.coords.altitude ? position.coords.altitude.toFixed(2) : '';
+
+        setData(prev => ({
+          ...prev,
+          latRead: lat,
+          longRead: long,
+          altitude: alt,
+          latConv: decimalToDms(lat),
+          longConv: decimalToDms(long)
+        }));
+        
+        setIsLocating(false);
+        setNotification({ type: 'success', message: 'Coordenadas atualizadas com sucesso!' });
+        setTimeout(() => setNotification(null), 3000);
+      },
+      (error) => {
+        console.error("Error getting location", error);
+        setIsLocating(false);
+        let msg = 'Erro ao obter localização.';
+        if (error.code === 1) msg = 'Permissão de localização negada.';
+        if (error.code === 2) msg = 'Localização indisponível.';
+        if (error.code === 3) msg = 'Tempo limite esgotado ao buscar localização.';
+        
+        setNotification({ type: 'error', message: msg });
+        setTimeout(() => setNotification(null), 3000);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   const handlePhotoUpload = useCallback((id: number, file: File) => {
@@ -461,8 +506,8 @@ export default function App() {
 
         {/* Step 2: Localização */}
         <Section title="Localização & Coordenadas" icon={<MapPin size={20} />}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="relative">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className="relative md:col-span-1">
               <Input 
                 label="CEP" 
                 name="zipCode" 
@@ -479,10 +524,13 @@ export default function App() {
               )}
             </div>
             
-            <Input className="md:col-span-2" label="Endereço" name="address" value={data.address} onChange={handleInputChange} />
+            <Input className="md:col-span-2" label="Rua (Logradouro)" name="address" value={data.address} onChange={handleInputChange} />
+            <Input className="md:col-span-1" label="Número" name="number" placeholder="S/N" value={data.number} onChange={handleInputChange} />
+            
             <Input label="Bairro" name="neighborhood" value={data.neighborhood} onChange={handleInputChange} />
             <Input label="Cidade" name="city" value={data.city} onChange={handleInputChange} />
             <Input label="Estado" name="state" value={data.state} onChange={handleInputChange} />
+            
             <Select 
               label="Dentro do Search Ring?" 
               name="insideSearchRing"
@@ -493,14 +541,26 @@ export default function App() {
                 { value: 'NÃO', label: 'NÃO' }
               ]}
             />
-            <Input label="Distância PN" name="distancePn" value={data.distancePn} onChange={handleInputChange} />
+            <Input className="md:col-span-1" label="Distância PN" name="distancePn" value={data.distancePn} onChange={handleInputChange} />
           </div>
 
           <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <h3 className="text-sm font-bold text-slate-700 mb-4 uppercase flex items-center gap-2">
-              Coordenadas
-              <span className="text-xs font-normal normal-case text-slate-500">(Preencha a leitura para conversão automática)</span>
-            </h3>
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
+              <h3 className="text-sm font-bold text-slate-700 uppercase flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                Coordenadas
+                <span className="text-xs font-normal normal-case text-slate-500">(Preencha a leitura para conversão automática)</span>
+              </h3>
+              
+              <button 
+                onClick={handleGetLocation}
+                disabled={isLocating}
+                className="flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold py-2 px-4 rounded shadow-sm transition-colors disabled:opacity-50 disabled:cursor-wait"
+              >
+                {isLocating ? <Loader2 size={16} className="animate-spin" /> : <LocateFixed size={16} />}
+                USAR GPS DO DISPOSITIVO
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Leitura (Decimal) */}
               <div className="grid grid-cols-2 gap-4">

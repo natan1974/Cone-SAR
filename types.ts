@@ -1,3 +1,4 @@
+
 export interface PhotoSlot {
   id: number;
   label: string;
@@ -15,7 +16,8 @@ export interface ReportData {
   status: string;
 
   // Localização
-  address: string;
+  address: string; // Rua / Logradouro
+  number: string;  // New field
   neighborhood: string;
   city: string;
   state: string;
@@ -85,6 +87,7 @@ export const INITIAL_DATA: ReportData = {
   pleadedValue: '',
   status: 'EM NEGOCIAÇÃO',
   address: '',
+  number: '',
   neighborhood: '',
   city: '',
   state: '',
