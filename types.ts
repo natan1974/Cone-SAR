@@ -62,6 +62,34 @@ export interface ReportData {
   operatorDistance: string;
 }
 
+// Nova interface para SOI/PDRF/SARF
+export interface SiteData {
+  idSharing: string;
+  idOperator: string;
+  sharing: string;
+  operator: string;
+  project: string;
+  city: string;
+  uf: string;
+  reg: string;
+  latitudePn: string;
+  longitudePn: string;
+  requestedHeight: string;
+  target: string;
+  activationDate: string;
+  activationOrder: string;
+  searchArea: string;
+  size: string;
+  projectPremises: string;
+  clientCoord: string;
+  coneCoord: string;
+  clientSla: string;
+  preComarRequestDate: string;
+  preComarReceiveDate: string;
+  allowedHeightPn: string;
+  siteStatus: string;
+}
+
 // Interface for what we store in the DB
 export interface StoredImage {
   slotId: number;
@@ -77,6 +105,12 @@ export interface SavedReport {
   status: 'DRAFT' | 'SUBMITTED';
   formData: ReportData;
   images: StoredImage[];
+}
+
+export interface SavedSite {
+  id?: number;
+  createdAt: number;
+  data: SiteData;
 }
 
 export const INITIAL_DATA: ReportData = {
@@ -122,6 +156,33 @@ export const INITIAL_DATA: ReportData = {
   otherOperatorsNearby: 'NÃO',
   operatorNames: '',
   operatorDistance: ''
+};
+
+export const INITIAL_SITE_DATA: SiteData = {
+  idSharing: '',
+  idOperator: '',
+  sharing: '',
+  operator: '',
+  project: '',
+  city: '',
+  uf: '',
+  reg: '',
+  latitudePn: '',
+  longitudePn: '',
+  requestedHeight: '',
+  target: '',
+  activationDate: '',
+  activationOrder: '',
+  searchArea: '',
+  size: '',
+  projectPremises: '',
+  clientCoord: '',
+  coneCoord: '',
+  clientSla: '',
+  preComarRequestDate: '',
+  preComarReceiveDate: '',
+  allowedHeightPn: '',
+  siteStatus: ''
 };
 
 export const PANORAMIC_LABELS = [
