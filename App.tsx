@@ -43,9 +43,45 @@ const getLocalDateString = () => {
   return localDate.toISOString().split('T')[0];
 };
 
+// --- MASK HELPERS ---
+const formatCep = (value: string) => {
+  return value
+    .replace(/\D/g, '') // Remove non-digits
+    .replace(/^(\d{5})(\d)/, '$1-$2') // Add dash
+    .substring(0, 9); // Limit length
+};
+
+const formatPhone = (value: string) => {
+  const clean = value.replace(/\D/g, '');
+  const limit = clean.length > 11 ? 11 : clean.length; // Max 11 digits
+  
+  // (XX) XXXXX-XXXX
+  if (clean.length > 10) {
+    return clean
+      .replace(/^(\d\d)(\d{5})(\d{4}).*/, '($1) $2-$3');
+  } 
+  // (XX) XXXX-XXXX
+  else if (clean.length > 5) {
+     return clean
+      .replace(/^(\d\d)(\d{4})(\d{0,4}).*/, '($1) $2-$3');
+  }
+  // (XX) ...
+  else if (clean.length > 2) {
+    return clean.replace(/^(\d\d)(\d{0,5})/, '($1) $2');
+  }
+  
+  return clean;
+};
+
+// --- VALIDATION HELPERS ---
+const isValidEmail = (email: string) => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
 export default function App() {
   const [data, setData] = useState<ReportData>(INITIAL_DATA);
   const [reportDate, setReportDate] = useState(getLocalDateString());
+  const [errors, setErrors] = useState<{[key: string]: string}>({});
   
   // Standard Photos (0-33)
   const [photos, setPhotos] = useState<PhotoSlot[]>(
@@ -79,8 +115,25 @@ export default function App() {
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+    let { name, value } = e.target;
     
+    // Apply Masks
+    if (name === 'zipCode') {
+      value = formatCep(value);
+    }
+    if (name === 'ownerPhone' || name === 'adminPhone') {
+      value = formatPhone(value);
+    }
+
+    // Clear validation error when user types
+    if (errors[name]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
+
     setData(prev => {
       const newData = { ...prev, [name]: value };
 
@@ -92,32 +145,56 @@ export default function App() {
         newData.longConv = decimalToDms(value);
       }
 
+      // Auto-calculate Total Area (Width * Depth)
+      if (name === 'dimensionsW' || name === 'dimensionsD') {
+        const width = parseFloat(newData.dimensionsW.replace(',', '.'));
+        const depth = parseFloat(newData.dimensionsD.replace(',', '.'));
+        
+        if (!isNaN(width) && !isNaN(depth)) {
+          // Calculation logic based on screenshot: 10 * 15 = 150
+          const total = (width * depth).toFixed(2).replace('.', ',');
+          newData.totalArea = total;
+        }
+      }
+
       return newData;
     });
   };
 
-  const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
-    const cep = e.target.value.replace(/\D/g, '');
-    
-    if (cep.length === 8) {
-      setIsLoadingCep(true);
-      try {
-        const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-        const addressData = await response.json();
-        
-        if (!addressData.erro) {
-          setData(prev => ({
-            ...prev,
-            address: addressData.logradouro || prev.address,
-            neighborhood: addressData.bairro || prev.neighborhood,
-            city: addressData.localidade || prev.city,
-            state: addressData.uf || prev.state,
-          }));
+  const handleBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+
+    // Email Validation
+    if ((name === 'ownerEmail' || name === 'adminEmail') && value) {
+      if (!isValidEmail(value)) {
+        setErrors(prev => ({ ...prev, [name]: 'E-mail inválido' }));
+      }
+    }
+
+    // CEP Fetching
+    if (name === 'zipCode') {
+      const cep = value.replace(/\D/g, '');
+      
+      if (cep.length === 8) {
+        setIsLoadingCep(true);
+        try {
+          const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+          const addressData = await response.json();
+          
+          if (!addressData.erro) {
+            setData(prev => ({
+              ...prev,
+              address: addressData.logradouro || prev.address,
+              neighborhood: addressData.bairro || prev.neighborhood,
+              city: addressData.localidade || prev.city,
+              state: addressData.uf || prev.state,
+            }));
+          }
+        } catch (error) {
+          console.error("Erro ao buscar CEP", error);
+        } finally {
+          setIsLoadingCep(false);
         }
-      } catch (error) {
-        console.error("Erro ao buscar CEP", error);
-      } finally {
-        setIsLoadingCep(false);
       }
     }
   };
@@ -230,6 +307,19 @@ export default function App() {
   };
 
   const handleSave = async (status: 'DRAFT' | 'SUBMITTED') => {
+    // Basic validation for SUBMITTED
+    if (status === 'SUBMITTED') {
+      const formHasErrors = Object.keys(errors).length > 0;
+      if (formHasErrors) {
+         setNotification({
+          type: 'error',
+          message: 'Corrija os erros de validação antes de enviar.'
+        });
+        setTimeout(() => setNotification(null), 3000);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     setNotification(null);
     
@@ -379,7 +469,8 @@ export default function App() {
                 placeholder="00000-000" 
                 value={data.zipCode} 
                 onChange={handleInputChange} 
-                onBlur={handleCepBlur}
+                onBlur={handleBlur}
+                maxLength={9}
               />
               {isLoadingCep && (
                 <div className="absolute right-3 top-8 text-primary-600 animate-spin">
@@ -478,8 +569,23 @@ export default function App() {
                 { value: 'JURIDICA', label: 'JURÍDICA' }
               ]}
             />
-            <Input label="Email" name="ownerEmail" type="email" value={data.ownerEmail} onChange={handleInputChange} />
-            <Input label="Telefone" name="ownerPhone" value={data.ownerPhone} onChange={handleInputChange} />
+            <Input 
+              label="Email" 
+              name="ownerEmail" 
+              type="email" 
+              value={data.ownerEmail} 
+              onChange={handleInputChange} 
+              onBlur={handleBlur}
+              error={errors.ownerEmail}
+            />
+            <Input 
+              label="Telefone" 
+              name="ownerPhone" 
+              value={data.ownerPhone} 
+              onChange={handleInputChange}
+              placeholder="(00) 00000-0000"
+              maxLength={15}
+            />
             <Input className="md:col-span-3" label="Endereço Completo" name="ownerAddress" value={data.ownerAddress} onChange={handleInputChange} />
           </div>
           
@@ -487,8 +593,22 @@ export default function App() {
             <h3 className="text-xs font-bold text-slate-500 mb-4 uppercase tracking-wider">Representante / Administrador</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                <Input label="Nome" name="adminName" value={data.adminName} onChange={handleInputChange} />
-               <Input label="Telefone" name="adminPhone" value={data.adminPhone} onChange={handleInputChange} />
-               <Input label="Email" name="adminEmail" value={data.adminEmail} onChange={handleInputChange} />
+               <Input 
+                label="Telefone" 
+                name="adminPhone" 
+                value={data.adminPhone} 
+                onChange={handleInputChange}
+                placeholder="(00) 00000-0000"
+                maxLength={15}
+              />
+               <Input 
+                label="Email" 
+                name="adminEmail" 
+                value={data.adminEmail} 
+                onChange={handleInputChange} 
+                onBlur={handleBlur}
+                error={errors.adminEmail}
+              />
             </div>
           </div>
         </Section>
@@ -541,9 +661,17 @@ export default function App() {
               ]}
             />
             
-            <Input label="Largura Disp. (m)" name="dimensionsW" placeholder="10.00" value={data.dimensionsW} onChange={handleInputChange} />
-            <Input label="Profundidade Disp. (m)" name="dimensionsD" placeholder="15.00" value={data.dimensionsD} onChange={handleInputChange} />
-            <Input label="Área Total (m²)" name="totalArea" placeholder="150.00" value={data.totalArea} onChange={handleInputChange} />
+            <Input label="Largura Disp. (m)" name="dimensionsW" placeholder="10,00" value={data.dimensionsW} onChange={handleInputChange} />
+            <Input label="Profundidade Disp. (m)" name="dimensionsD" placeholder="15,00" value={data.dimensionsD} onChange={handleInputChange} />
+            <Input 
+              label="Área Total (m²)" 
+              name="totalArea" 
+              placeholder="150,00" 
+              value={data.totalArea} 
+              onChange={handleInputChange} 
+              readOnly
+              className="bg-slate-50 text-slate-700 font-semibold"
+            />
             
              <Select 
               label="Outras Op. Raio 500m?" 
