@@ -13,8 +13,8 @@ class SARDatabase {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
+      request.onupgradeneeded = () => {
+        const db = request.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
           store.createIndex('date', 'date', { unique: false });
@@ -22,14 +22,14 @@ class SARDatabase {
         }
       };
 
-      request.onsuccess = (event) => {
-        this.db = (event.target as IDBOpenDBRequest).result;
+      request.onsuccess = () => {
+        this.db = request.result;
         resolve(this.db);
       };
 
-      request.onerror = (event) => {
-        console.error("Database error:", (event.target as IDBOpenDBRequest).error);
-        reject((event.target as IDBOpenDBRequest).error);
+      request.onerror = () => {
+        console.error("Database error:", request.error);
+        reject(request.error);
       };
     });
   }

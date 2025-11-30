@@ -35,9 +35,17 @@ const decimalToDms = (val: string): string => {
   return `${sign}${degrees}° ${minutes}' ${seconds}"`;
 };
 
+// Helper to get local date string YYYY-MM-DD
+const getLocalDateString = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  const localDate = new Date(now.getTime() - (offset * 60 * 1000));
+  return localDate.toISOString().split('T')[0];
+};
+
 export default function App() {
   const [data, setData] = useState<ReportData>(INITIAL_DATA);
-  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reportDate, setReportDate] = useState(getLocalDateString());
   
   // Standard Photos (0-33)
   const [photos, setPhotos] = useState<PhotoSlot[]>(
