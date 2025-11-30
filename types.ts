@@ -60,6 +60,23 @@ export interface ReportData {
   operatorDistance: string;
 }
 
+// Interface for what we store in the DB
+export interface StoredImage {
+  slotId: number;
+  label: string;
+  file: Blob; // We store the raw file blob
+  type: 'standard' | 'panorama' | 'croqui';
+}
+
+export interface SavedReport {
+  id?: number; // Auto-incremented by DB
+  date: string;
+  createdAt: number;
+  status: 'DRAFT' | 'SUBMITTED';
+  formData: ReportData;
+  images: StoredImage[];
+}
+
 export const INITIAL_DATA: ReportData = {
   siteType: 'GREENFIELD',
   heightEv: '40.00',

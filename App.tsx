@@ -10,12 +10,15 @@ import {
   FileText,
   Search,
   Loader2,
-  Compass
+  Compass,
+  CheckCircle2,
+  Database
 } from 'lucide-react';
-import { INITIAL_DATA, PHOTO_LABELS, PANORAMIC_LABELS, ReportData, PhotoSlot } from './types';
+import { INITIAL_DATA, PHOTO_LABELS, PANORAMIC_LABELS, ReportData, PhotoSlot, SavedReport, StoredImage } from './types';
 import { Input, Select } from './components/Input';
 import { Section } from './components/Section';
 import { PhotoUpload } from './components/PhotoUpload';
+import { dbService } from './db';
 
 // Helper function to convert Decimal to Degrees Minutes Seconds
 const decimalToDms = (val: string): string => {
@@ -65,6 +68,7 @@ export default function App() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingCep, setIsLoadingCep] = useState(false);
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -170,26 +174,95 @@ export default function App() {
     }));
   }, []);
 
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    console.log("Relatório Submitido:", {
-      date: reportDate,
-      data,
-      croqui: croqui.file ? croqui.file.name : 'Sem croqui',
-      panoramasCount: panoramas.filter(p => p.file !== null).length,
-      photosCount: photos.filter(p => p.file !== null).length
+  const prepareDataForSave = (status: 'DRAFT' | 'SUBMITTED'): SavedReport => {
+    // Collect all images
+    const imagesToStore: StoredImage[] = [];
+
+    // Croqui
+    if (croqui.file) {
+      imagesToStore.push({
+        slotId: croqui.id,
+        label: croqui.label,
+        file: croqui.file,
+        type: 'croqui'
+      });
+    }
+
+    // Panoramas
+    panoramas.forEach(p => {
+      if (p.file) {
+        imagesToStore.push({
+          slotId: p.id,
+          label: p.label,
+          file: p.file,
+          type: 'panorama'
+        });
+      }
     });
 
-    alert("Relatório SAR enviado com sucesso!");
-    setIsSubmitting(false);
+    // Standard Photos
+    photos.forEach(p => {
+      if (p.file) {
+        imagesToStore.push({
+          slotId: p.id,
+          label: p.label,
+          file: p.file,
+          type: 'standard'
+        });
+      }
+    });
+
+    return {
+      date: reportDate,
+      createdAt: Date.now(),
+      status,
+      formData: data,
+      images: imagesToStore
+    };
+  };
+
+  const handleSave = async (status: 'DRAFT' | 'SUBMITTED') => {
+    setIsSubmitting(true);
+    setNotification(null);
+    
+    try {
+      const reportPayload = prepareDataForSave(status);
+      const id = await dbService.saveReport(reportPayload);
+      
+      console.log(`Relatório salvo com ID: ${id} | Status: ${status}`);
+      
+      setNotification({
+        type: 'success',
+        message: status === 'DRAFT' 
+          ? 'Rascunho salvo com sucesso na base de dados!' 
+          : 'Relatório enviado com sucesso para a base de dados!'
+      });
+
+      // Clear notification after 3 seconds
+      setTimeout(() => setNotification(null), 3000);
+
+    } catch (error) {
+      console.error("Erro ao salvar:", error);
+      setNotification({
+        type: 'error',
+        message: 'Erro ao salvar no banco de dados. Tente novamente.'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-100 pb-20">
+      
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`fixed top-20 right-4 z-50 p-4 rounded-lg shadow-lg text-white animate-fade-in flex items-center gap-2 ${notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+          {notification.type === 'success' ? <CheckCircle2 size={20} /> : <Database size={20} />}
+          <span>{notification.message}</span>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-primary-700 text-white shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -214,8 +287,12 @@ export default function App() {
               />
             </div>
 
-            <button className="hidden md:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-md transition-colors text-sm font-medium h-[42px]">
-              <Save size={16} />
+            <button 
+              onClick={() => handleSave('DRAFT')}
+              disabled={isSubmitting}
+              className="hidden md:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-md transition-colors text-sm font-medium h-[42px]"
+            >
+              {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
               <span className="hidden lg:inline">Salvar Rascunho</span>
             </button>
           </div>
@@ -550,7 +627,7 @@ export default function App() {
             Cancelar
           </button>
           <button 
-            onClick={handleSubmit}
+            onClick={() => handleSave('SUBMITTED')}
             disabled={isSubmitting}
             className={`
               flex items-center gap-2 px-8 py-3 bg-primary-600 text-white rounded-md font-bold text-sm shadow-lg
@@ -559,7 +636,10 @@ export default function App() {
             `}
           >
             {isSubmitting ? (
-              'Enviando...'
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                SALVANDO...
+              </>
             ) : (
               <>
                 <Send size={18} />
